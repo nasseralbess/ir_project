@@ -1,0 +1,9 @@
+bmm25s
+pandas
+PyStemmer
+requests
+usearch
+tqdm
+python-dotenv
+fastapi[standard]
+pydantic
