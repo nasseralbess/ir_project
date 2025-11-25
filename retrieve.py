@@ -39,10 +39,10 @@ def search(request: SearchRequest) -> Dict[str, List[int]]:
 
 @app.get("/document/{doc_id}")
 def get_document(doc_id: int) -> Dict[str, Any]:
-    if doc_id < 0 or doc_id >= len(data):
+    if doc_id < 0:
         raise fastapi.HTTPException(status_code=404, detail="Document not found")
     
-    row = data.iloc[doc_id]
+    row = data[data.index == doc_id].iloc[0]
     return {
         "id": doc_id,
         "topic": row["topic"],
@@ -55,6 +55,7 @@ def get_document(doc_id: int) -> Dict[str, Any]:
 
 stemmer = Stemmer.Stemmer('english')
 data = pd.read_csv("wiki_dataset.csv")
+data.drop_duplicates(subset=["content"], inplace=True)
 stopwords = tuple(original_stopwords.STOPWORDS_EN) 
 JINA_API_KEY = os.getenv("JINA_API_KEY")
 documents = list(data["content"])
@@ -93,6 +94,7 @@ def retrieve_bm25(query, k=3):
     results = results.squeeze().tolist()
     doc_ids = [reverse_documents[doc] for doc in results]
     # pairs = [(doc_id, score) for doc_id, score in zip(doc_ids, scores) if score > 0]
+    print(f"BM25 retrieved docs: {doc_ids} with scores: {scores}")
     return doc_ids
 
 def retrieve_semantic(query, index=None, k=3):
@@ -103,6 +105,7 @@ def retrieve_semantic(query, index=None, k=3):
         freqs[doc] = freqs.get(doc, 0) + 1
     
     sorted_docs = sorted(freqs.items(), key=lambda x: x[1], reverse=True)
+    print(f"Semantic retrieved docs: {[doc for doc, _ in sorted_docs]}")
     return [doc for doc, _ in sorted_docs]
 
 def retrieve_documents(query: str, k: int) -> Dict[str, List[int]]:
