@@ -3,11 +3,14 @@ class WikiSearch {
         this.searchInput = document.getElementById('searchInput');
         this.searchBtn = document.getElementById('searchBtn');
         this.searchButton = document.getElementById('searchButton');
+        this.modelSelect = document.getElementById('modelSelect');
         this.loadingSpinner = document.getElementById('loadingSpinner');
         this.resultsContainer = document.getElementById('resultsContainer');
         this.resultsHeader = document.getElementById('resultsHeader');
         this.resultsCount = document.getElementById('resultsCount');
         this.searchResults = document.getElementById('searchResults');
+        this.spellingSuggestion = document.getElementById('spellingSuggestion');
+        this.suggestionLink = document.getElementById('suggestionLink');
         
         this.bindEvents();
     }
@@ -26,17 +29,30 @@ class WikiSearch {
         this.searchButton.addEventListener('click', () => {
             this.performSearch();
         });
+
+        this.suggestionLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.searchInput.value = this.suggestionLink.textContent;
+            this.performSearch();
+        });
     }
     
     async performSearch() {
         const query = this.searchInput.value.trim();
+        const model = this.modelSelect.value;
         if (!query) return;
         
         this.showLoading();
+        this.hideSpellingSuggestion();
         
         try {
-            const searchResults = await this.searchDocuments(query);
-            const documents = await this.fetchDocuments(searchResults.results);
+            const searchResponse = await this.searchDocuments(query, model);
+            
+            if (searchResponse.spelling_suggestions) {
+                this.displaySpellingSuggestion(searchResponse.spelling_suggestions);
+            }
+
+            const documents = await this.fetchDocuments(searchResponse.results);
             this.displayResults(documents, query);
         } catch (error) {
             console.error('Search error:', error);
@@ -45,13 +61,13 @@ class WikiSearch {
     }
     
     
-    async searchDocuments(query, k = 10) {
-        const response = await fetch('https://api.nasseralbess.com/search', {
+    async searchDocuments(query, model, k = 10) {
+        const response = await fetch('http://127.0.0.1:8000/search', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ query, k })
+            body: JSON.stringify({ query, k, model })
         });
         
         if (!response.ok) {
@@ -62,7 +78,7 @@ class WikiSearch {
     }
     
     async fetchDocument(docId) {
-        const response = await fetch(`https://api.nasseralbess.com/document/${docId}`);
+        const response = await fetch(`http://127.0.0.1:8000/document/${docId}`);
         
         if (!response.ok) {
             throw new Error(`Failed to fetch document ${docId}: ${response.status}`);
@@ -83,6 +99,16 @@ class WikiSearch {
     
     hideLoading() {
         this.loadingSpinner.classList.add('hidden');
+    }
+
+    displaySpellingSuggestion(suggestion) {
+        this.suggestionLink.textContent = suggestion;
+        this.spellingSuggestion.classList.remove('hidden');
+    }
+
+    hideSpellingSuggestion() {
+        this.spellingSuggestion.classList.add('hidden');
+        this.suggestionLink.textContent = '';
     }
     
     displayResults(documents, query) {

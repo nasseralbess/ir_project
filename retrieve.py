@@ -15,6 +15,10 @@ import os
 import fastapi
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import pickle
+from scipy.sparse import load_npz
+from enum import Enum
+from query_helpers import parse_query, suggest_spelling, expand_abbreviations, expand_query_with_synonyms, llm_query_expansion
 
 
 app = fastapi.FastAPI()
@@ -28,14 +32,53 @@ app.add_middleware(
 )
 
 
+class ModelType(str, Enum):
+    VECTOR_SPACE = "tfidf"
+    LANGUAGE_MODEL = "semantic"
+    BM25 = "bm25"
+    HYBRID = "hybrid"
+
 class SearchRequest(BaseModel):
     query: str
     k: int = 3
+    model: ModelType
+    
 
 @app.post("/search")
-def search(request: SearchRequest) -> Dict[str, List[int]]:
-    results = rrf(request.query, request.k)
-    return {"results": results}
+def search(request: SearchRequest) -> Dict[str, Any]:
+    query = request.query
+    parsed_query, is_phrase = parse_query(query)
+    original_phrase = parsed_query
+    spelling_suggestions = ""
+
+    if not is_phrase:
+        processed_query = expand_query_with_synonyms(parsed_query)
+        processed_query = expand_abbreviations(parsed_query)
+        spelling_suggestions = suggest_spelling(processed_query)
+        if spelling_suggestions==processed_query:
+            spelling_suggestions=""
+
+        try:
+            processed = llm_query_expansion(processed_query)
+            origi = processed_query
+            processed_query = json.loads(processed)["combined_search_string"]
+            print(f"Processed Query: {processed} from Original: {origi}")
+        except Exception as e:
+            print(f"LLM expansion failed: {processed} with error {e}")
+    else:
+        processed_query = original_phrase
+    if request.model == ModelType.BM25:
+        results = retrieve_bm25(processed_query, request.k)
+    elif request.model == ModelType.LANGUAGE_MODEL:
+        results = retrieve_semantic(processed_query, semantic_index, request.k)
+    elif request.model == ModelType.VECTOR_SPACE:
+        results = retrieve_tfidf(processed_query, request.k)
+    elif request.model == ModelType.HYBRID:
+        results = rrf(processed_query, request.k)
+    else:
+        raise fastapi.HTTPException(status_code=400, detail="Invalid model type")
+    
+    return {"results": results, "spelling_suggestions": spelling_suggestions}
 
 @app.get("/document/{doc_id}")
 def get_document(doc_id: int) -> Dict[str, Any]:
@@ -59,8 +102,11 @@ data.drop_duplicates(subset=["content"], inplace=True)
 stopwords = tuple(original_stopwords.STOPWORDS_EN) 
 JINA_API_KEY = os.getenv("JINA_API_KEY")
 documents = list(data["content"])
+tfidf_vectors = load_npz("tfidf_vectors.npz")
 
 bm25 = bm25s.BM25.load("bm25_index_content", load_corpus=True)
+with open("tfidf.pk","rb") as v:
+    tfidf = pickle.load(v)
 url = 'https://api.jina.ai/v1/embeddings'
 
 headers = {
@@ -87,26 +133,49 @@ semantic_index = Index(ndim=1024)
 semantic_index.load("semantic_full.usearch")
 reverse_documents = {document:i for i,document in enumerate(documents)}
 
+def aggregate_semantic_results(matches, alpha=0.8):
+    similarities = 1 / (1 + matches.distances)
+    chunk_ids = matches.keys
+    doc_scores = defaultdict(list)
+    
+    for doc_id, score in zip(chunk_ids, similarities):
+        doc_scores[doc_id].append(score)
+
+    final_ranking = []
+    
+    for doc_id, scores in doc_scores.items():
+        scores = np.array(scores)
+        
+        max_score = np.max(scores)
+        sum_score = np.sum(scores)
+        final_score = (alpha * max_score) + ((1 - alpha) * sum_score)
+        final_ranking.append((doc_id, final_score))
+        
+    final_ranking.sort(key=lambda x: x[1], reverse=True)
+    return final_ranking
+
 def retrieve_bm25(query, k=3):
     query_tokens = bm25s.tokenize(query, stemmer=stemmer, stopwords=stopwords, show_progress=False)
     results, scores = bm25.retrieve(query_tokens, corpus=[d for d in documents], k=k, show_progress=False,return_as="tuple")
     scores = scores.squeeze().tolist()
     results = results.squeeze().tolist()
-    doc_ids = [reverse_documents[doc] for doc in results]
-    # pairs = [(doc_id, score) for doc_id, score in zip(doc_ids, scores) if score > 0]
-    print(f"BM25 retrieved docs: {doc_ids} with scores: {scores}")
+    doc_ids = [reverse_documents[doc] for score, doc in zip(scores,results) if score > 0]
     return doc_ids
 
-def retrieve_semantic(query, index=None, k=3):
+def retrieve_semantic(query, index, k=3):
+    print(k)
     query_embedding = np.array(embed(query))
     matches = index.search(query_embedding, k) 
-    freqs = {}
-    for doc in matches.keys.tolist():
-        freqs[doc] = freqs.get(doc, 0) + 1
-    
-    sorted_docs = sorted(freqs.items(), key=lambda x: x[1], reverse=True)
-    print(f"Semantic retrieved docs: {[doc for doc, _ in sorted_docs]}")
-    return [doc for doc, _ in sorted_docs]
+    agg = aggregate_semantic_results(matches)
+    print(agg)
+    ids = [int(doc_id) for doc_id, score in agg if score > .6]
+    return ids[:k//2]
+
+def retrieve_tfidf(query, k=3):
+    query_vec = tfidf.transform([query])
+    scores = (tfidf_vectors @ query_vec.T).toarray().ravel()
+    top_k = np.argsort(scores)[::-1][:k]
+    return top_k.tolist()#, scores[top_k].tolist()
 
 def retrieve_documents(query: str, k: int) -> Dict[str, List[int]]:
     retrieval_functions = {

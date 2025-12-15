@@ -35,12 +35,23 @@ body {
     margin-bottom: 40px;
 }
 
+.search-input-and-select {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px; /* Space between search box and select */
+    margin-bottom: 20px; /* Space below the combined input/select */
+    max-width: 700px; /* Adjust max-width for the combined elements */
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .search-box {
     position: relative;
     display: inline-block;
     width: 100%;
-    max-width: 584px;
-    margin-bottom: 30px;
+    max-width: 584px; /* Keep its original max-width, flex will adjust */
+    margin-bottom: 0; /* No margin-bottom here, controlled by parent */
 }
 
 #searchInput {
@@ -72,6 +83,45 @@ body {
 
 #searchBtn:hover {
     color: #333;
+}
+
+.options-container {
+    margin-bottom: 20px;
+}
+
+.model-select {
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #dfe1e5;
+    background-color: #f8f9fa;
+    color: #3c4043;
+    font-size: 14px;
+    cursor: pointer;
+    outline: none;
+}
+
+.model-select:hover {
+    background-color: #f1f3f4;
+    border-color: #dadce0;
+}
+
+.spelling-suggestion {
+    color: #d93025;
+    font-size: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.spelling-suggestion a {
+    color: #1a0dab;
+    font-weight: bold;
+    text-decoration: none;
+    font-style: italic;
+    cursor: pointer;
+}
+
+.spelling-suggestion a:hover {
+    text-decoration: underline;
 }
 
 .search-buttons {

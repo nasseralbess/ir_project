@@ -7,3 +7,4 @@ tqdm
 python-dotenv
 fastapi[standard]
 pydantic
+groq
