@@ -69,6 +69,8 @@ def search(request: SearchRequest) -> Dict[str, Any]:
             print(f"LLM expansion failed: {processed} with error {e}")
     else:
         processed_query = original_phrase
+        results = retrieve_literal(processed_query, request.k)
+        return {"results": results, "spelling_suggestions": spelling_suggestions}
     if request.model == ModelType.BM25:
         results = retrieve_bm25(processed_query, request.k)
     elif request.model == ModelType.LANGUAGE_MODEL:
@@ -156,6 +158,11 @@ def aggregate_semantic_results(matches, alpha=0.8):
         
     final_ranking.sort(key=lambda x: x[1], reverse=True)
     return final_ranking
+
+def retrieve_literal(query, k=3):
+    mask = data["content"].str.contains(query, case=False, regex=False)
+    matches = data[mask]
+    return matches.index.tolist()[:k]
 
 def retrieve_bm25(query, k=3):
     query_tokens = bm25s.tokenize(query, stemmer=stemmer, stopwords=stopwords, show_progress=False)
