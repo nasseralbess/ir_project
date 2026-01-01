@@ -62,7 +62,7 @@ class WikiSearch {
     
     
     async searchDocuments(query, model, k = 10) {
-        const response = await fetch('http://127.0.0.1:8000/search', {
+        const response = await fetch('https://api.nasseralbess.com/search', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -78,7 +78,7 @@ class WikiSearch {
     }
     
     async fetchDocument(docId) {
-        const response = await fetch(`http://127.0.0.1:8000/document/${docId}`);
+        const response = await fetch(`https://api.nasseralbess.com/document/${docId}`);
         
         if (!response.ok) {
             throw new Error(`Failed to fetch document ${docId}: ${response.status}`);

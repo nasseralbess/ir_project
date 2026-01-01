@@ -1,25 +1,27 @@
-import bm25s
-from bm25s import stopwords as original_stopwords
-import pandas as pd
-import Stemmer
-import requests
-import json
-from usearch.index import Index
-import numpy as np
-from tqdm import tqdm
-from typing import List, Dict, Any, Tuple
-from collections import defaultdict
-from dotenv import load_dotenv
-load_dotenv()
 import os
-import fastapi
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import json
 import pickle
-from scipy.sparse import load_npz
 from enum import Enum
+from collections import defaultdict
+from typing import List, Dict, Any, Tuple
+
+from fastapi.middleware.cors import CORSMiddleware
+from bm25s import stopwords as original_stopwords
+from scipy.sparse import load_npz
+from usearch.index import Index
+from pydantic import BaseModel
+from dotenv import load_dotenv
+from tqdm import tqdm
+import pandas as pd
+import numpy as np
+import requests
+import Stemmer
+import fastapi
+import bm25s
+
 from query_helpers import parse_query, suggest_spelling, expand_abbreviations, expand_query_with_synonyms, llm_query_expansion
 
+load_dotenv()
 
 app = fastapi.FastAPI()
 
@@ -77,7 +79,7 @@ def search(request: SearchRequest) -> Dict[str, Any]:
         results = rrf(processed_query, request.k)
     else:
         raise fastapi.HTTPException(status_code=400, detail="Invalid model type")
-    
+    print(results)
     return {"results": results, "spelling_suggestions": spelling_suggestions}
 
 @app.get("/document/{doc_id}")
@@ -99,6 +101,7 @@ def get_document(doc_id: int) -> Dict[str, Any]:
 stemmer = Stemmer.Stemmer('english')
 data = pd.read_csv("wiki_dataset.csv")
 data.drop_duplicates(subset=["content"], inplace=True)
+id_map = {k:v for k,v in zip(range(100),data.index)}
 stopwords = tuple(original_stopwords.STOPWORDS_EN) 
 JINA_API_KEY = os.getenv("JINA_API_KEY")
 documents = list(data["content"])
@@ -131,7 +134,7 @@ def embed(text):
 
 semantic_index = Index(ndim=1024)
 semantic_index.load("semantic_full.usearch")
-reverse_documents = {document:i for i,document in enumerate(documents)}
+reverse_documents = {document:i for i,document in zip(list(data.index),documents)}
 
 def aggregate_semantic_results(matches, alpha=0.8):
     similarities = 1 / (1 + matches.distances)
@@ -175,7 +178,7 @@ def retrieve_tfidf(query, k=3):
     query_vec = tfidf.transform([query])
     scores = (tfidf_vectors @ query_vec.T).toarray().ravel()
     top_k = np.argsort(scores)[::-1][:k]
-    return top_k.tolist()#, scores[top_k].tolist()
+    return [id_map[i] for i in top_k.tolist()]#, scores[top_k].tolist()
 
 def retrieve_documents(query: str, k: int) -> Dict[str, List[int]]:
     retrieval_functions = {
