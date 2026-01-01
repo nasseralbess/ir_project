@@ -79,7 +79,7 @@ def search(request: SearchRequest) -> Dict[str, Any]:
         results = rrf(processed_query, request.k)
     else:
         raise fastapi.HTTPException(status_code=400, detail="Invalid model type")
-    print(results)
+    # print(results)
     return {"results": results, "spelling_suggestions": spelling_suggestions}
 
 @app.get("/document/{doc_id}")
@@ -166,19 +166,21 @@ def retrieve_bm25(query, k=3):
     return doc_ids
 
 def retrieve_semantic(query, index, k=3):
-    print(k)
+    # print(k)
     query_embedding = np.array(embed(query))
     matches = index.search(query_embedding, k) 
     agg = aggregate_semantic_results(matches)
+    # print(agg)
+    ids = [int(doc_id) for doc_id, score in agg if score > .77]
     print(agg)
-    ids = [int(doc_id) for doc_id, score in agg if score > .6]
     return ids[:k//2]
 
 def retrieve_tfidf(query, k=3):
     query_vec = tfidf.transform([query])
     scores = (tfidf_vectors @ query_vec.T).toarray().ravel()
-    top_k = np.argsort(scores)[::-1][:k]
-    return [id_map[i] for i in top_k.tolist()]#, scores[top_k].tolist()
+    sorted_idx = np.argsort(scores)[::-1]
+    top_k = [i for i in sorted_idx if scores[i] > 0][:k]    
+    return [id_map[i] for i in top_k]#, scores[top_k].tolist()
 
 def retrieve_documents(query: str, k: int) -> Dict[str, List[int]]:
     retrieval_functions = {
